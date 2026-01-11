@@ -1,258 +1,296 @@
 # Archive Indexer Implementation Pack (MVP)
 
-## 1) Information Architecture (Confirmed)
+## 1) Product & Platform Summary
 
-**Option A: Single site collection**
-
-- One SharePoint site collection (e.g., “Jordan Archive”).
-- **Separate library per branch** (confirmed).
-- **Restricted documents**: separate restricted library per branch (recommended for permission isolation).
-- **Managed metadata**: use **Term Store** for Document Type and Tags.
-
-**Library naming convention**
-
-- `Archive - <Branch Name>`
-- `Archive - <Branch Name> (Restricted)`
+- **Product:** Archive Indexer (Internal Document Archive + Index + Search)
+- **Platform:** SharePoint Online (Microsoft 365)
+- **Delivery:** SPFx solution (.sppkg) deployed via Tenant App Catalog; eligible for AppSource/SharePoint Store.
+- **Identity/Access:** Microsoft 365 users + groups (Entra ID backed).
 
 ---
 
-## 2) SharePoint IA Build Sheet (MVP)
+## 2) Architecture (MVP)
 
-### 2.1 Site Columns (Site Collection level)
+### 2.1 SPFx Components
 
-> Create as **Site Columns** in a dedicated group, e.g., `Archive Indexer Columns`.
+- **Archive Search Web Part**
+- **Document Intake (Upload + Index) Web Part**
+- **Admin Setup Wizard Web Part**
+- *(Optional later)* Application Customizer (global header/search)
 
-| Column Name | Type | Required | Notes |
-|---|---|---|---|
-| Document Number | Single line of text | Yes | Unique business ID (validate per branch library). |
-| Document Type | Managed Metadata | Yes | Term set `Document Types`. |
-| Branch | Single line of text | Yes | Pre-filled per branch library (hidden in UI). |
-| Department | Choice | No | Controlled list. |
-| Vendor / Client | Single line of text | No |  |
-| Project Code | Single line of text | No |  |
-| Issue Date | Date and Time (Date only) | No |  |
-| Received Date | Date and Time (Date only) | No |  |
-| Confidentiality | Choice | Yes | Public / Internal / Confidential / Restricted. |
-| Status | Choice | Yes | Draft / Submitted / Approved / Archived. |
-| Tags | Managed Metadata | No | Term set `Archive Tags`. |
-| Owner | Person or Group | No |  |
-| Retention Category | Choice | No | Tenant-specific values. |
-| Notes | Multiple lines of text | No | Plain text (no rich HTML). |
+### 2.2 Storage (SharePoint-native)
 
-### 2.2 Content Types
+- **Document Libraries** for files
+- **SharePoint Lists** for configuration data
+- **Search** via SharePoint Search API
 
-Create content type: **Archive Document**
+> MVP remains SharePoint-native for security, performance, and marketplace readiness.
+
+---
+
+## 3) Information Architecture (MVP Choice)
+
+**Option A (recommended):** One site per company with a single library + branch metadata.
+
+- **Site:** “Archive Indexer – <CompanyName>” (Modern Team Site)
+- **Library:** `Archive Documents`
+- **Restricted:** Separate library `Archive Restricted` (optional but recommended)
+
+---
+
+## 4) SharePoint IA Build Sheet (MVP)
+
+### 4.1 Libraries
+
+#### Archive Documents
+
+- Versioning: **On (major versions)**
+- Require checkout: **Off**
+- Content approval: **Off (MVP)**
+- Default view: **Archive Search View**
+
+#### Archive Restricted (recommended)
+
+- Same schema as Archive Documents
+- Permissions limited to Admin/Librarian/explicit groups
+
+### 4.2 Site Columns (prefix **AI_**)
+
+> Create once at the site level and reuse in content type and libraries.
+
+| Internal Name | Display Name | Type | Required | Notes |
+|---|---|---|---|---|
+| AI_DocNumber | Document Number | Single line | Yes | Unique business ID (validate via wizard/upload form). |
+| AI_DocType | Document Type | Lookup | Yes | Lookup to **AI Document Types** list. |
+| AI_Branch | Branch | Lookup | Yes | Lookup to **AI Branches** list. |
+| AI_Department | Department | Choice | Yes | Finance / HR / IT / Projects / Legal / Procurement (default). |
+| AI_Confidentiality | Confidentiality | Choice | Yes | Internal / Confidential / Restricted. |
+| AI_IssueDate | Issue Date | Date | No |  |
+| AI_ReceivedDate | Received Date | Date | No |  |
+| AI_ProjectCode | Project Code | Single line | No |  |
+| AI_VendorClient | Vendor / Client | Single line | No |  |
+| AI_Status | Status | Choice | Yes | Draft / Submitted / Approved / Archived. |
+| AI_Tags | Tags | Multiple lines | No | MVP: free tags; can switch to managed metadata later. |
+| AI_DocOwner | Document Owner | Person | No | Defaults to uploader. |
+| AI_RetentionCategory | Retention Category | Choice | No | Optional; map to Purview later. |
+| AI_Notes | Notes | Multiple lines | No | Plain text only. |
+
+### 4.3 Content Types
+
+**AI Archived Document**
 
 - Parent: `Document`
-- Add all site columns listed above
-- Set **Document Number**, **Document Type**, **Confidentiality**, **Status** to Required
+- Columns: All **AI_** site columns
+- Required: Document Number, Document Type, Branch, Confidentiality, Status
 
-### 2.3 Libraries (per branch)
+Attach to **Archive Documents** and **Archive Restricted** libraries.
 
-For each branch:
+### 4.4 Lists (Configuration)
 
-- **Library A:** `Archive - <Branch Name>`
-  - Content type: `Archive Document` (default)
-  - Versioning: On (major versions)
-  - Require checkout: Off
-  - Metadata required: On
-- **Library B:** `Archive - <Branch Name> (Restricted)`
-  - Same schema, but permissions locked down
+A) **AI Branches**
 
-### 2.4 Lists (Configuration)
+| Field | Type | Required | Example |
+|---|---|---|---|
+| Title (Branch Name) | Single line | Yes | Amman |
+| BranchCode | Single line | Yes | AMM |
+| Country | Single line | No | Jordan |
+| Active | Yes/No | Yes | True |
+| DefaultLibraryPath | Single line | No | /sites/Archive/Archive Documents |
 
-Create each as a SharePoint List:
+B) **AI Document Types**
 
-1) **Branches**
-   - Branch Name (Title)
-   - Code (single line)
-   - Country (single line)
-   - Active (Yes/No)
-   - Default Library Path (single line)
+| Field | Type | Required | Example |
+|---|---|---|---|
+| Title (Doc Type) | Single line | Yes | Invoice |
+| TypeCode | Single line | No | INV |
+| RequiredFieldsJson | Multiple lines | No | {"required":["AI_ProjectCode"]} |
+| DefaultConfidentiality | Choice | No | Internal |
+| DefaultRetentionCategory | Choice | No | Finance-7y |
 
-2) **Security Roles**
-   - Role Name (Title)
-   - SharePoint Group (person/group)
+C) **AI Security Roles**
 
-3) **App Settings**
-   - Key (Title)
-   - Value (single line)
-   - Notes (multiple lines)
+| Field | Type | Required | Example |
+|---|---|---|---|
+| Title (Role Name) | Single line | Yes | Archive Librarian |
+| SharePointGroupName | Single line | Yes | AI_Archive_Librarian |
+| PermissionLevel | Choice | Yes | Read / Contribute / Edit / Full Control |
+| Scope | Choice | Yes | Site / Library / RestrictedLibrary |
 
-> **Document Types** and **Tags** managed in the **Term Store** (not lists).
+D) **AI Settings**
 
-### 2.5 Term Store
+| Field | Type | Required | Example |
+|---|---|---|---|
+| Title (Setting Key) | Single line | Yes | EnableApproval |
+| Value | Single line | Yes | false |
+| Notes | Multiple lines | No |  |
 
-Create in Term Store:
+E) **AI Audit (Optional)**
 
-- Term Set: `Document Types`
-- Term Set: `Archive Tags`
+| Field | Type | Example |
+|---|---|---|
+| Action | Choice | Search / Upload / UpdateMetadata / Setup |
+| ItemUrl | Hyperlink |  |
+| Actor | Person |  |
+| Timestamp | DateTime |  |
+| Details | Multiple lines |  |
+
+### 4.5 Views
+
+**Archive Search View (default)**
+
+- Columns: File Name, Document Number, Branch, Document Type, Department, Confidentiality, Issue Date, Status, Modified, Modified By
+- Sort: Modified desc
+
+**By Branch**
+
+- Group by Branch
+
+**Restricted Only (admin)**
+
+- Filter: Confidentiality = Restricted
 
 ---
 
-## 3) Wizard Flow Screens (Admin Setup Wizard Web Part)
+## 5) Wizard Flow Screens (Admin Setup Wizard Web Part)
 
-### Step 0: Welcome + Environment Detection
+### Screen 0 — Welcome
 
 - Title: “Archive Indexer Setup Wizard”
-- Shows detected site URL, tenant, user.
-- Checks admin privileges.
+- Detect site URL, tenant context, user
+- Admin privilege check
 
-### Step 1: Branch Libraries
+### Screen 1 — Choose Architecture
 
-- Show list of branches (from Branches list or manual entry).
-- For each branch:
-  - Create `Archive - <Branch Name>`
-  - Create `Archive - <Branch Name> (Restricted)`
-- Output: success per branch.
+- **Single Library + Branch metadata (recommended)**
+- Library per Branch (advanced)
 
-### Step 2: Columns + Content Type
+### Screen 2 — Create Components
 
-- Create Site Columns (if missing).
-- Create Content Type `Archive Document`.
-- Add to each branch library and set as default.
+Checklist:
 
-### Step 3: Term Store Binding
+- Lists (AI Branches, AI Document Types, AI Settings, AI Security Roles)
+- Libraries (Archive Documents, optional Archive Restricted)
+- Site Columns (AI_*)
+- Content Type (AI Archived Document)
+- Views
 
-- Confirm `Document Types` and `Archive Tags` term sets exist.
-- Link columns to term sets.
+### Screen 3 — Branch Setup
 
-### Step 4: Permissions Mapping
+- Add/edit branches in a table
+- Optional CSV import
+- Defaults include “Head Office” row
 
-- Map roles to SharePoint groups:
-  - Archive Admin
-  - Archive Librarian
-  - Contributor
-  - Reader
-- Apply permissions:
-  - Standard libraries: Reader/Contributor/Librarian/Admin
-  - Restricted libraries: Librarian/Admin only
+### Screen 4 — Document Types Setup
 
-### Step 5: Optional Folder Seeding
+- Preload defaults (Invoice, Contract, Delivery Note, Report, Letter, Drawing)
+- Configure default confidentiality + required fields
 
-- Toggle to create base folders (e.g., Department/Year).
+### Screen 5 — Security & Permissions
 
-### Step 6: Health Check + Summary
+- Create new SharePoint groups (recommended) or map existing groups
+- Toggle **Restricted Library**
+- Apply permissions to libraries/lists
 
-- Validate:
-  - Lists created
-  - Libraries created
-  - Columns applied
-  - Content type applied
-  - Permissions set
-- Show exportable report.
+### Screen 6 — Validation & Health Check
 
----
+- Lists exist
+- Libraries exist
+- Content type attached
+- Required columns present
+- Permissions applied
+- Sample search call works
 
-## 4) Document Intake Web Part (UI Spec + Optional Approval Toggle)
+### Screen 7 — Finish
 
-### Upload + Index Form
-
-**Required fields**
-
-- Document Number (unique per branch)
-- Document Type (managed metadata)
-- Confidentiality
-- Status
-
-**Optional fields**
-
-- Department
-- Vendor/Client
-- Project Code
-- Issue Date
-- Received Date
-- Tags (managed metadata)
-- Owner
-- Retention Category
-- Notes
-
-### Optional Toggle: “Submit for approval”
-
-- Toggle shown when **App Settings** key `approval_enabled = true`.
-- If enabled, set Status = `Submitted` and assign approval task (Phase 1.5 stub).
-- If disabled, Status defaults to `Draft`.
-
-### Validation
-
-- Document Number required and **unique** within selected branch library.
-- Document Type + Confidentiality required.
-- Status required.
+- Summary report
+- Links to Search / Upload / Settings
+- Exportable setup report (JSON/text)
 
 ---
 
-## 5) Search Web Part (UI + Filters)
+## 6) Feature Scope (MVP)
 
-### Search Sources
+### 6.1 Search Web Part
 
-- SharePoint Search API
-- Scope: branch libraries user has access to
-- Restricted libraries only returned if user has permission
+- Full-text search (SharePoint Search)
+- Filters: Branch, Type, Date Range, Department, Confidentiality, Status, Owner
+- Results grid: File Name, Document Number, Branch, Type, Issue Date, Status
+- Actions: View / Download / Edit metadata / Open in SharePoint
 
-### Filters
+### 6.2 Upload + Index Web Part
 
-- Branch (auto from library)
-- Document Type
-- Department
-- Date range (Issue Date / Received Date)
-- Confidentiality
-- Status
-- Owner
-
-### Results Grid Columns
-
-- File Name
-- Document Number
-- Branch
-- Document Type
-- Issue Date
-- Status
-- Actions: View / Download / Edit Metadata / Open in SharePoint
+- Upload to Archive Documents
+- Metadata form with validation
+- **Document Number required + unique**
+- Required classification (Branch + Type + Confidentiality)
+- Optional “Submit for approval” toggle (Phase 1.5)
 
 ---
 
-## 6) Security Checklist (SPFx + Tenant)
+## 7) Permissions Model
+
+### Roles (default)
+
+- **Archive Admin:** Full control (setup + security + settings)
+- **Archive Librarian:** Edit + manage metadata + approvals
+- **Contributor:** Upload + edit own docs metadata
+- **Reader:** Read only
+
+### Restricted Documents
+
+- Store in **Archive Restricted** library with tighter permissions
+- Avoid item-level permission sprawl
+
+---
+
+## 8) Security Checklist (MVP)
 
 ### SPFx Frontend
 
-- Do not render raw HTML from user input.
-- Sanitize and validate metadata fields.
-- Use PnPjs/Graph with least privilege.
-- Avoid storing secrets in client-side code.
+- No secrets in client code
+- Use SPFx SharePoint/Graph clients
+- Validate and sanitize inputs
+- Never render user input as HTML
+- Least-privilege permissions
 
-### SharePoint Tenant
+### SharePoint / Tenant
 
-- Enable versioning on all branch libraries.
-- Use separate restricted libraries with tighter permissions.
-- Use groups and role mapping for permissions.
-
----
-
-## 7) Marketplace Publishing Checklist (MVP)
-
-### Packaging
-
-- Build SPFx `.sppkg` package.
-- Use tenant app catalog deployment.
-- Enable tenant-wide availability via `skipFeatureDeployment` if desired.
-
-### Store Readiness
-
-- Provide setup guide (wizard instructions).
-- Security and privacy statement (data remains in tenant).
-- Document required permissions.
-
-### AppSource/Store Requirements
-
-- Add solution description, screenshots, and support URL.
-- Provide versioned release notes.
-- Include configuration and uninstall instructions.
+- Versioning enabled
+- Restricted library permissions locked
+- Group-based roles
 
 ---
 
-## 8) Next Implementation Artifacts (Optional)
+## 9) Marketplace Packaging (MVP)
 
-- Branch list seeding template (CSV).
-- Term Store import CSV.
-- Setup Wizard wireframes.
-- Role mapping defaults (JSON template).
+- `gulp bundle --ship`
+- `gulp package-solution --ship`
+- Validate metadata in `config/package-solution.json`
+- Decide on `skipFeatureDeployment` for tenant-wide availability
+
+### Submission Checklist
+
+- App description + screenshots
+- Privacy + security statements
+- Support contact
+- Permission documentation
+
+---
+
+## 10) Acceptance Criteria (Definition of Done)
+
+- Admin installs .sppkg and runs wizard successfully
+- Lists/libraries/columns/content type created automatically
+- Role-based permissions applied correctly
+- Upload + metadata validation enforced
+- Search results + filters work as expected
+- Restricted docs are isolated from unauthorized users
+- No secrets in client-side code
+
+---
+
+## 11) Roadmap (Post-MVP)
+
+- **Phase 1.5:** Approval workflow, bulk upload, bulk metadata edit
+- **Phase 2:** Optional Azure backend (OCR, cross-system indexing, reporting)
+- **Phase 3:** Multi-language UI (Arabic/English), records management integration
